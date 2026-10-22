@@ -34,6 +34,9 @@ jobs:
   version:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -56,22 +59,51 @@ jobs:
           fi
           echo "version=$REF_NAME" >> "$GITHUB_OUTPUT"
 
-      # Tags are immutable. The image is public, so this reads the registry anonymously.
+      # Tags are immutable. The check reads the registry anonymously first. A package that does
+      # not exist yet answers DENIED there, as does a private one, so a DENIED is asked again with
+      # this repository's own token, whose answer for a package that is not there is not-found or
+      # denied. Any other failure stops the run.
       - name: Refuse a version that is already published
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if out=$(docker buildx imagetools inspect "$IMAGE:$VERSION" 2>&1); then
+          not_published() {
+            case "$1" in
+              *"not found"* | *MANIFEST_UNKNOWN* | *"manifest unknown"* | *NAME_UNKNOWN*) return 0 ;;
+            esac
+            return 1
+          }
+          denied() {
+            case "$1" in
+              *DENIED* | *denied* | *unauthorized* | *UNAUTHORIZED*) return 0 ;;
+            esac
+            return 1
+          }
+          published() {
             echo "::error::$IMAGE:$VERSION is already published and tags are immutable; cut the next -r<n> tag."
             exit 1
+          }
+          if out=$(docker buildx imagetools inspect "$IMAGE:$VERSION" 2>&1); then
+            published
           fi
-          case "$out" in
-            *"not found"* | *MANIFEST_UNKNOWN* | *"manifest unknown"*) echo "$IMAGE:$VERSION is not published yet" ;;
-            *)
-              echo "::error::Could not tell whether $IMAGE:$VERSION is published: $out"
-              exit 1
-              ;;
-          esac
+          if not_published "$out"; then
+            echo "$IMAGE:$VERSION is not published yet"
+            exit 0
+          fi
+          if denied "$out"; then
+            printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+            if out=$(docker buildx imagetools inspect "$IMAGE:$VERSION" 2>&1); then
+              published
+            fi
+            if not_published "$out" || denied "$out"; then
+              echo "$IMAGE:$VERSION is not published yet"
+              exit 0
+            fi
+          fi
+          echo "::error::Could not tell whether $IMAGE:$VERSION is published: $out"
+          exit 1
 
   test:
     needs: version
