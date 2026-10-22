@@ -77,7 +77,7 @@ jobs:
           }
           denied() {
             case "$1" in
-              *DENIED* | *denied* | *unauthorized* | *UNAUTHORIZED*) return 0 ;;
+              *DENIED* | *denied* | *unauthorized* | *UNAUTHORIZED* | *Forbidden* | *"failed to authorize"*) return 0 ;;
             esac
             return 1
           }
