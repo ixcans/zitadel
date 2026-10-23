@@ -10,8 +10,7 @@ name: Build and publish
 # v<upstream version>-r<n> (for example v4.19.4-r2), the image tag is the git tag, and a
 # tag is immutable: this workflow refuses to publish a version that already exists in the
 # registry, so a pinned tag can never be swapped for a different image. To change what a
-# deployment runs, cut the next -r<n> tag. `latest` is not maintained (it still points at the
-# last build made before publishing became tag-driven).
+# deployment runs, cut the next -r<n> tag. `latest` is not published: only the tag and `sha-<commit>` are.
 #
 # Runners are GitHub-hosted (ubuntu-latest) only.
 
